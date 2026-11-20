@@ -632,4 +632,10 @@ load_plugins {
 
 web_client {
     font "monospace"
+    // Font size in pixels for every web client. When unset, the desktop view uses 12 and the
+    // mobile view uses 24.
+    // font_size 12
+    // Font size in pixels for mobile viewports only. It overrides both `font_size` and the
+    // built-in 24px mobile default.
+    // mobile_font_size 8
 }

@@ -513,12 +513,24 @@ function applyTerminalBackground(config) {
 
 function settleFontSize(term, fitAddon, config) {
     const fontSize = config ? config.font_size : undefined;
+    const mobileFontSize = config ? config.mobile_font_size : undefined;
     const mobileViewport = isMobileViewport();
     const hasExplicitFontSize = typeof fontSize === "number" && fontSize > 0;
-    const baseFontPx = hasExplicitFontSize ? fontSize : mobileViewport ? 24 : 12;
+    const hasExplicitMobileFontSize =
+        typeof mobileFontSize === "number" && mobileFontSize > 0;
+    const baseFontPx = mobileViewport
+        ? hasExplicitMobileFontSize
+            ? mobileFontSize
+            : hasExplicitFontSize
+              ? fontSize
+              : 24
+        : hasExplicitFontSize
+          ? fontSize
+          : 12;
     applyFontSize(term, fitAddon, baseFontPx);
     const needsMobileDownscale =
         !hasExplicitFontSize &&
+        !hasExplicitMobileFontSize &&
         mobileViewport &&
         term.rows < NATURAL_MIN_TOTAL_ROWS;
     if (needsMobileDownscale) {
