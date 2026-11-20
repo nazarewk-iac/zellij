@@ -632,4 +632,15 @@ load_plugins {
 
 web_client {
     font "monospace"
+    // Font size in pixels for every web client. When unset, the desktop view uses 12 and the
+    // mobile view uses 24.
+    // font_size 12
+    // Font size in pixels for mobile viewports only. It overrides both `font_size` and the
+    // built-in 24px mobile default.
+    // mobile_font_size 8
+    // Font size for mobile viewports in DEVICE pixels per em: the client divides it by the
+    // browser's devicePixelRatio, so a 3x phone gets a third of the number in CSS pixels and a
+    // 1.5x phone two thirds. Glyph sharpness then stays the same on every screen, and coarser
+    // panels get physically larger text. It wins over `mobile_font_size`.
+    // mobile_font_device_px 24
 }

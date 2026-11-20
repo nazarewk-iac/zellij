@@ -511,14 +511,71 @@ function applyTerminalBackground(config) {
     }
 }
 
-function settleFontSize(term, fitAddon, config) {
+// Per-browser font size, written by the pinch gesture and by the mobile menu. It survives a
+// reload, so a device can be tuned without touching the server config.
+const FONT_SIZE_STORAGE_KEY = "zellij:font-size";
+
+function storedFontSize() {
+    try {
+        const raw = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+        if (raw === null) return null;
+        const value = Number(raw);
+        return value > 0 ? clampFontSize(value) : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function storeFontSize(px) {
+    try {
+        if (px === null || px === undefined) {
+            localStorage.removeItem(FONT_SIZE_STORAGE_KEY);
+            return;
+        }
+        localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(clampFontSize(px)));
+    } catch (e) {
+    }
+}
+
+// `mobile_font_device_px` names a size in DEVICE pixels per em, so the browser's
+// `devicePixelRatio` turns it into the CSS pixels xterm wants: a 3x phone gets one third of the
+// number, a 1.5x phone two thirds. That keeps glyph sharpness constant across screens whose CSS
+// pixel is already density-independent, and it makes the text physically larger where the panel
+// is coarser. It wins over `mobile_font_size`, which is a fixed CSS size.
+function configFontSize(config, mobileViewport) {
     const fontSize = config ? config.font_size : undefined;
-    const mobileViewport = isMobileViewport();
+    const mobileFontSize = config ? config.mobile_font_size : undefined;
+    const devicePx = config ? config.mobile_font_device_px : undefined;
     const hasExplicitFontSize = typeof fontSize === "number" && fontSize > 0;
-    const baseFontPx = hasExplicitFontSize ? fontSize : mobileViewport ? 24 : 12;
+    const hasExplicitMobileFontSize =
+        typeof mobileFontSize === "number" && mobileFontSize > 0;
+    const hasDevicePx = typeof devicePx === "number" && devicePx > 0;
+    if (mobileViewport) {
+        if (hasDevicePx) {
+            const dpr = window.devicePixelRatio || 1;
+            return { px: clampFontSize(devicePx / dpr), explicit: true };
+        }
+        if (hasExplicitMobileFontSize) {
+            return { px: mobileFontSize, explicit: true };
+        }
+    }
+    if (hasExplicitFontSize) {
+        return { px: fontSize, explicit: true };
+    }
+    return { px: mobileViewport ? 24 : 12, explicit: false };
+}
+
+function settleFontSize(term, fitAddon, config) {
+    const mobileViewport = isMobileViewport();
+    const configured = configFontSize(config, mobileViewport);
+    // The menu's "Reset" returns to this, whatever the config said.
+    window.__zjDefaultFontSize = configured.px;
+    const stored = storedFontSize();
+    const baseFontPx = stored !== null ? stored : configured.px;
     applyFontSize(term, fitAddon, baseFontPx);
     const needsMobileDownscale =
-        !hasExplicitFontSize &&
+        stored === null &&
+        !configured.explicit &&
         mobileViewport &&
         term.rows < NATURAL_MIN_TOTAL_ROWS;
     if (needsMobileDownscale) {
@@ -1556,6 +1613,7 @@ function installTouchGestures({ term, terminalElement, sendFunction, pinch }) {
                 pinch_initial_distance = null;
                 pinch_initial_font_size = null;
                 if (wasPinch) {
+                    storeFontSize(term.options.fontSize);
                     pinch.armRemoval();
                     return;
                 }
@@ -2047,6 +2105,17 @@ function injectStyles() {
       height: 1px; background: var(--zj-border); margin: 4px 0;
     }
 
+    .zj-mobile-menu .zj-font-row {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .zj-mobile-menu .zj-font-row button {
+      flex: 0 0 auto; min-height: 44px;
+    }
+    .zj-mobile-menu .zj-font-row [data-role="font-value"] {
+      flex: 1 1 0; text-align: center;
+      color: var(--zj-text-dim); font-family: inherit; font-size: 14px;
+    }
+
     .zj-mobile-overlay {
       position: fixed; top: 0; left: 0; right: 0; z-index: 700;
       height: var(--dynamic-vh, 100vh);
@@ -2238,6 +2307,37 @@ function buildMenu() {
     changeSession.textContent = "Change Session";
     changeSession.addEventListener("click", () => openOverlay("sessions"));
 
+    const fontRow = document.createElement("div");
+    fontRow.className = "zj-font-row";
+    const fontDec = document.createElement("button");
+    fontDec.dataset.role = "font-dec";
+    fontDec.textContent = "A\u2212";
+    fontDec.setAttribute("aria-label", "Smaller font");
+    fontDec.addEventListener("click", () => {
+        applyUserFontSize(currentFontSize() - 1);
+        renderMenu();
+    });
+    const fontValue = document.createElement("span");
+    fontValue.dataset.role = "font-value";
+    const fontInc = document.createElement("button");
+    fontInc.dataset.role = "font-inc";
+    fontInc.textContent = "A+";
+    fontInc.setAttribute("aria-label", "Larger font");
+    fontInc.addEventListener("click", () => {
+        applyUserFontSize(currentFontSize() + 1);
+        renderMenu();
+    });
+    const fontReset = document.createElement("button");
+    fontReset.dataset.role = "font-reset";
+    fontReset.textContent = "Reset";
+    fontReset.setAttribute("aria-label", "Reset font size");
+    fontReset.addEventListener("click", () => {
+        applyUserFontSize(window.__zjDefaultFontSize || 12, false);
+        storeFontSize(null);
+        renderMenu();
+    });
+    fontRow.append(fontDec, fontValue, fontInc, fontReset);
+
     const sep = document.createElement("div");
     sep.className = "zj-sep";
 
@@ -2248,6 +2348,7 @@ function buildMenu() {
     menu.append(
         renderToggle,
         fitToggle,
+        fontRow,
         themeToggle,
         changePane,
         changeSession,
@@ -2697,6 +2798,26 @@ function checkbox(on) {
     return on ? "[x]" : "[ ]";
 }
 
+function currentFontSize() {
+    const size = ctx && ctx.term ? ctx.term.options.fontSize : undefined;
+    return typeof size === "number" && size > 0 ? size : 12;
+}
+
+// Same shape as the pinch gesture: set the size, remember it for this browser, and let the
+// resize handler tell the server. Calling fitAddon.fit() here would pre-sync term.rows/cols and
+// the handler would never notify the server.
+function applyUserFontSize(px, persist = true) {
+    const clamped = clampFontSize(px);
+    if (persist) {
+        storeFontSize(clamped);
+    }
+    if (!ctx || !ctx.term || ctx.term.options.fontSize === clamped) {
+        return;
+    }
+    ctx.term.options.fontSize = clamped;
+    window.dispatchEvent(new CustomEvent("zellij:rendering-resize"));
+}
+
 function renderMenu() {
     if (!els.menu.classList.contains("zj-open")) {
         return;
@@ -2715,6 +2836,11 @@ function renderMenu() {
     themeToggle.textContent = `${checkbox(
         effectiveTheme() === "light"
     )} Light mode`;
+
+    const fontValue = els.menu.querySelector('[data-role="font-value"]');
+    if (fontValue) {
+        fontValue.textContent = `${currentFontSize()}px`;
+    }
 }
 
 function renderModifierBar() {

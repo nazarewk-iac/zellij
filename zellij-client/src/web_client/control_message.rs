@@ -68,6 +68,10 @@ pub struct SetConfigPayload {
     pub mac_option_is_meta: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub font_size: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mobile_font_size: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mobile_font_device_px: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -185,6 +189,8 @@ impl From<&Config> for SetConfigPayload {
             .map(|s| s.to_string());
 
         let font_size = config.web_client.font_size;
+        let mobile_font_size = config.web_client.mobile_font_size;
+        let mobile_font_device_px = config.web_client.mobile_font_device_px;
 
         SetConfigPayload {
             font,
@@ -194,6 +200,8 @@ impl From<&Config> for SetConfigPayload {
             cursor_style,
             cursor_inactive_style,
             font_size,
+            mobile_font_size,
+            mobile_font_device_px,
         }
     }
 }

@@ -1,4 +1,4 @@
-import { clampFontSize } from "./terminal.js";
+import { clampFontSize, storeFontSize } from "./terminal.js";
 import { toggleSoftKeyboard } from "./soft-keyboard.js";
 
 const SGR_COORD_BASE = 1;
@@ -237,6 +237,7 @@ export function installTouchGestures({ term, terminalElement, sendFunction, pinc
                 pinch_initial_distance = null;
                 pinch_initial_font_size = null;
                 if (wasPinch) {
+                    storeFontSize(term.options.fontSize);
                     pinch.armRemoval();
                     return;
                 }

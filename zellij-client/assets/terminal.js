@@ -59,14 +59,71 @@ export function applyTerminalBackground(config) {
     }
 }
 
-export function settleFontSize(term, fitAddon, config) {
+// Per-browser font size, written by the pinch gesture and by the mobile menu. It survives a
+// reload, so a device can be tuned without touching the server config.
+export const FONT_SIZE_STORAGE_KEY = "zellij:font-size";
+
+export function storedFontSize() {
+    try {
+        const raw = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+        if (raw === null) return null;
+        const value = Number(raw);
+        return value > 0 ? clampFontSize(value) : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+export function storeFontSize(px) {
+    try {
+        if (px === null || px === undefined) {
+            localStorage.removeItem(FONT_SIZE_STORAGE_KEY);
+            return;
+        }
+        localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(clampFontSize(px)));
+    } catch (e) {
+    }
+}
+
+// `mobile_font_device_px` names a size in DEVICE pixels per em, so the browser's
+// `devicePixelRatio` turns it into the CSS pixels xterm wants: a 3x phone gets one third of the
+// number, a 1.5x phone two thirds. That keeps glyph sharpness constant across screens whose CSS
+// pixel is already density-independent, and it makes the text physically larger where the panel
+// is coarser. It wins over `mobile_font_size`, which is a fixed CSS size.
+export function configFontSize(config, mobileViewport) {
     const fontSize = config ? config.font_size : undefined;
-    const mobileViewport = isMobileViewport();
+    const mobileFontSize = config ? config.mobile_font_size : undefined;
+    const devicePx = config ? config.mobile_font_device_px : undefined;
     const hasExplicitFontSize = typeof fontSize === "number" && fontSize > 0;
-    const baseFontPx = hasExplicitFontSize ? fontSize : mobileViewport ? 24 : 12;
+    const hasExplicitMobileFontSize =
+        typeof mobileFontSize === "number" && mobileFontSize > 0;
+    const hasDevicePx = typeof devicePx === "number" && devicePx > 0;
+    if (mobileViewport) {
+        if (hasDevicePx) {
+            const dpr = window.devicePixelRatio || 1;
+            return { px: clampFontSize(devicePx / dpr), explicit: true };
+        }
+        if (hasExplicitMobileFontSize) {
+            return { px: mobileFontSize, explicit: true };
+        }
+    }
+    if (hasExplicitFontSize) {
+        return { px: fontSize, explicit: true };
+    }
+    return { px: mobileViewport ? 24 : 12, explicit: false };
+}
+
+export function settleFontSize(term, fitAddon, config) {
+    const mobileViewport = isMobileViewport();
+    const configured = configFontSize(config, mobileViewport);
+    // The menu's "Reset" returns to this, whatever the config said.
+    window.__zjDefaultFontSize = configured.px;
+    const stored = storedFontSize();
+    const baseFontPx = stored !== null ? stored : configured.px;
     applyFontSize(term, fitAddon, baseFontPx);
     const needsMobileDownscale =
-        !hasExplicitFontSize &&
+        stored === null &&
+        !configured.explicit &&
         mobileViewport &&
         term.rows < NATURAL_MIN_TOTAL_ROWS;
     if (needsMobileDownscale) {

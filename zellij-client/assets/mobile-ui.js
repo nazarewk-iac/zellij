@@ -1,4 +1,5 @@
 import { isMobileViewport, getBaseUrl } from "./utils.js";
+import { clampFontSize, storeFontSize } from "./terminal.js";
 
 const DARK_PALETTE = {
     "--zj-green": "#A3BD8D",
@@ -420,6 +421,17 @@ function injectStyles() {
       height: 1px; background: var(--zj-border); margin: 4px 0;
     }
 
+    .zj-mobile-menu .zj-font-row {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .zj-mobile-menu .zj-font-row button {
+      flex: 0 0 auto; min-height: 44px;
+    }
+    .zj-mobile-menu .zj-font-row [data-role="font-value"] {
+      flex: 1 1 0; text-align: center;
+      color: var(--zj-text-dim); font-family: inherit; font-size: 14px;
+    }
+
     .zj-mobile-overlay {
       position: fixed; top: 0; left: 0; right: 0; z-index: 700;
       height: var(--dynamic-vh, 100vh);
@@ -611,6 +623,37 @@ function buildMenu() {
     changeSession.textContent = "Change Session";
     changeSession.addEventListener("click", () => openOverlay("sessions"));
 
+    const fontRow = document.createElement("div");
+    fontRow.className = "zj-font-row";
+    const fontDec = document.createElement("button");
+    fontDec.dataset.role = "font-dec";
+    fontDec.textContent = "A\u2212";
+    fontDec.setAttribute("aria-label", "Smaller font");
+    fontDec.addEventListener("click", () => {
+        applyUserFontSize(currentFontSize() - 1);
+        renderMenu();
+    });
+    const fontValue = document.createElement("span");
+    fontValue.dataset.role = "font-value";
+    const fontInc = document.createElement("button");
+    fontInc.dataset.role = "font-inc";
+    fontInc.textContent = "A+";
+    fontInc.setAttribute("aria-label", "Larger font");
+    fontInc.addEventListener("click", () => {
+        applyUserFontSize(currentFontSize() + 1);
+        renderMenu();
+    });
+    const fontReset = document.createElement("button");
+    fontReset.dataset.role = "font-reset";
+    fontReset.textContent = "Reset";
+    fontReset.setAttribute("aria-label", "Reset font size");
+    fontReset.addEventListener("click", () => {
+        applyUserFontSize(window.__zjDefaultFontSize || 12, false);
+        storeFontSize(null);
+        renderMenu();
+    });
+    fontRow.append(fontDec, fontValue, fontInc, fontReset);
+
     const sep = document.createElement("div");
     sep.className = "zj-sep";
 
@@ -621,6 +664,7 @@ function buildMenu() {
     menu.append(
         renderToggle,
         fitToggle,
+        fontRow,
         themeToggle,
         changePane,
         changeSession,
@@ -1070,6 +1114,26 @@ function checkbox(on) {
     return on ? "[x]" : "[ ]";
 }
 
+function currentFontSize() {
+    const size = ctx && ctx.term ? ctx.term.options.fontSize : undefined;
+    return typeof size === "number" && size > 0 ? size : 12;
+}
+
+// Same shape as the pinch gesture: set the size, remember it for this browser, and let the
+// resize handler tell the server. Calling fitAddon.fit() here would pre-sync term.rows/cols and
+// the handler would never notify the server.
+function applyUserFontSize(px, persist = true) {
+    const clamped = clampFontSize(px);
+    if (persist) {
+        storeFontSize(clamped);
+    }
+    if (!ctx || !ctx.term || ctx.term.options.fontSize === clamped) {
+        return;
+    }
+    ctx.term.options.fontSize = clamped;
+    window.dispatchEvent(new CustomEvent("zellij:rendering-resize"));
+}
+
 function renderMenu() {
     if (!els.menu.classList.contains("zj-open")) {
         return;
@@ -1088,6 +1152,11 @@ function renderMenu() {
     themeToggle.textContent = `${checkbox(
         effectiveTheme() === "light"
     )} Light mode`;
+
+    const fontValue = els.menu.querySelector('[data-role="font-value"]');
+    if (fontValue) {
+        fontValue.textContent = `${currentFontSize()}px`;
+    }
 }
 
 function renderModifierBar() {

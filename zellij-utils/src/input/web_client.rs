@@ -240,6 +240,8 @@ pub struct WebClientConfig {
     pub mac_option_is_meta: bool,
     pub base_url: Option<String>,
     pub font_size: Option<u16>,
+    pub mobile_font_size: Option<u16>,
+    pub mobile_font_device_px: Option<u16>,
 }
 
 impl Default for WebClientConfig {
@@ -253,6 +255,8 @@ impl Default for WebClientConfig {
             mac_option_is_meta: true, // TODO: yes? no?
             base_url: None,
             font_size: None,
+            mobile_font_size: None,
+            mobile_font_device_px: None,
         }
     }
 }
@@ -291,23 +295,28 @@ impl WebClientConfig {
             web_client_config.base_url = Some(base_url.to_owned());
         }
 
-        if let Some(font_size_node) = kdl_get_child!(kdl, "font_size") {
+        let parse_font_size = |name: &str| -> Result<Option<u16>, ConfigError> {
+            let Some(font_size_node) = kdl_get_child!(kdl, name) else {
+                return Ok(None);
+            };
             let raw = font_size_node
                 .entries()
                 .iter()
                 .find_map(|e| e.value().as_i64());
-            if let Some(value) = raw {
-                if value > 0 && value <= u16::MAX as i64 {
-                    web_client_config.font_size = Some(value as u16);
-                } else {
-                    return Err(ConfigError::new_kdl_error(
-                        format!("font_size must be between 1 and {}", u16::MAX),
-                        font_size_node.span().offset(),
-                        font_size_node.span().len(),
-                    ));
-                }
+            match raw {
+                Some(value) if value > 0 && value <= u16::MAX as i64 => Ok(Some(value as u16)),
+                Some(_) => Err(ConfigError::new_kdl_error(
+                    format!("{} must be between 1 and {}", name, u16::MAX),
+                    font_size_node.span().offset(),
+                    font_size_node.span().len(),
+                )),
+                None => Ok(None),
             }
-        }
+        };
+
+        web_client_config.font_size = parse_font_size("font_size")?;
+        web_client_config.mobile_font_size = parse_font_size("mobile_font_size")?;
+        web_client_config.mobile_font_device_px = parse_font_size("mobile_font_device_px")?;
 
         Ok(web_client_config)
     }
@@ -364,6 +373,22 @@ impl WebClientConfig {
             web_client_children.nodes_mut().push(font_size_node);
         }
 
+        if let Some(mobile_font_size) = self.mobile_font_size {
+            let mut mobile_font_size_node = KdlNode::new("mobile_font_size");
+            mobile_font_size_node.push(KdlValue::Base10(mobile_font_size as i64));
+            web_client_children
+                .nodes_mut()
+                .push(mobile_font_size_node);
+        }
+
+        if let Some(mobile_font_device_px) = self.mobile_font_device_px {
+            let mut mobile_font_device_px_node = KdlNode::new("mobile_font_device_px");
+            mobile_font_device_px_node.push(KdlValue::Base10(mobile_font_device_px as i64));
+            web_client_children
+                .nodes_mut()
+                .push(mobile_font_device_px_node);
+        }
+
         web_client_node.set_children(web_client_children);
         web_client_node
     }
@@ -378,6 +403,8 @@ impl WebClientConfig {
         merged.mac_option_is_meta = other.mac_option_is_meta;
         merged.base_url = other.base_url;
         merged.font_size = other.font_size;
+        merged.mobile_font_size = other.mobile_font_size;
+        merged.mobile_font_device_px = other.mobile_font_device_px;
         merged
     }
 }
